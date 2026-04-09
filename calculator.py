@@ -1,0 +1,337 @@
+"""Core data model and I/O for IF calculation.
+
+This module provides a `Journal` class for storing citation arrays by year,
+plus a `read` function for importing Web of Science exported txt files.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import csv
+import re
+from pathlib import Path
+
+import numpy as np
+import numpy.typing as npt
+
+type Year = np.int16
+type CitationArray = npt.NDArray[np.int16]
+type CitationMap = dict[Year, CitationArray]
+type IFResult = dict[Year, np.float16]
+
+_YEAR_PATTERN: re.Pattern[str] = re.compile(r"\b(19|20)\d{2}\b")
+_INT16_INFO: np.iinfo[np.int16] = np.iinfo(np.int16)
+
+
+def _to_camel_case(raw_name: str) -> str:
+    """Convert a raw journal name to CamelCase.
+
+    Args:
+        raw_name: Original journal name from query text.
+
+    Returns:
+        CamelCase journal name.
+    """
+
+    words: list[str] = re.findall(r"[A-Za-z0-9]+", raw_name)
+    if not words:
+        raise ValueError("Journal name is empty or invalid.")
+    return "".join(word.capitalize() for word in words)
+
+
+def _parse_query_line(query_line: str) -> tuple[str, Year]:
+    """Parse journal name and target citation year from first line.
+
+    The first line is expected to look like:
+    "journal name and 2008 or 2009 (Publication Years) ..."
+
+    Args:
+        query_line: First line in exported txt file.
+
+    Returns:
+        A tuple of `(journal_name_camel_case, target_year)`.
+
+    Raises:
+        ValueError: If line format is invalid or years cannot be inferred.
+    """
+
+    marker: str = " and "
+    split_index: int = query_line.lower().find(marker)
+    if split_index < 0:
+        raise ValueError("Cannot parse query line: missing 'and' separator.")
+
+    raw_journal_name: str = query_line[:split_index].strip()
+    journal_name: str = _to_camel_case(raw_journal_name)
+
+    years: list[int] = [int(match.group()) for match in _YEAR_PATTERN.finditer(query_line)]
+    if len(years) < 2:
+        raise ValueError("Cannot infer publication years from query line.")
+
+    target_year: Year = np.int16(max(years[0], years[1]) + 1)
+    return journal_name, target_year
+
+
+def _parse_csv_rows(lines: list[str], header_index: int) -> tuple[list[str], list[list[str]]]:
+    """Parse csv header and rows from txt lines.
+
+    Args:
+        lines: Full text lines.
+        header_index: Index of csv header line.
+
+    Returns:
+        Parsed header and data rows.
+    """
+
+    csv_text: str = "\n".join(lines[header_index:])
+    reader: csv.reader[str] = csv.reader(csv_text.splitlines())
+    all_rows: list[list[str]] = list(reader)
+    if not all_rows:
+        raise ValueError("No CSV rows found after header.")
+    return all_rows[0], all_rows[1:]
+
+
+def _find_header_index(lines: list[str]) -> int:
+    """Find index of CSV header line.
+
+    Args:
+        lines: Full file lines.
+
+    Returns:
+        Header index.
+
+    Raises:
+        ValueError: If no valid header exists.
+    """
+
+    for index, line in enumerate(lines):
+        if line.startswith('"Title"'):
+            return index
+    raise ValueError("Cannot find CSV header line starting with 'Title'.")
+
+
+def _to_citation_array(values: list[int]) -> CitationArray:
+    """Convert citation values to int16 numpy array with range check.
+
+    Args:
+        values: Citation values.
+
+    Returns:
+        Numpy array with dtype int16.
+
+    Raises:
+        ValueError: If any citation exceeds int16 range.
+    """
+
+    if not values:
+        return np.array([], dtype=np.int16)
+
+    min_value: int = min(values)
+    max_value: int = max(values)
+    if min_value < _INT16_INFO.min or max_value > _INT16_INFO.max:
+        raise ValueError(
+            "Citation value exceeds int16 range: "
+            f"min={min_value}, max={max_value}."
+        )
+    return np.array(values, dtype=np.int16)
+
+
+def _trim_sorted(citations: CitationArray, ratio: float) -> CitationArray:
+    """Return a trimmed copy from sorted citation values.
+
+    Args:
+        citations: Citation array for one target year.
+        ratio: Trim ratio per side in [0, 0.5).
+
+    Returns:
+        Trimmed citation array.
+
+    Raises:
+        ValueError: If no sample remains after trimming.
+    """
+
+    sorted_values: CitationArray = np.sort(citations)
+    sample_size: int = int(sorted_values.size)
+    trim_count: int = int(sample_size * ratio)
+
+    if trim_count == 0:
+        return sorted_values
+
+    end_index: int = sample_size - trim_count
+    trimmed: CitationArray = sorted_values[trim_count:end_index]
+    if trimmed.size == 0:
+        raise ValueError("No samples remain after trimming.")
+    return trimmed
+
+
+@dataclass(slots=True)
+class Journal:
+    """Journal citations grouped by IF target year.
+
+    Attributes:
+        name: Journal name in CamelCase.
+        _citations: Mapping of target year to citation array.
+
+    Examples:
+        >>> journal = Journal(name="ChinesePhysicsC")
+        >>> journal.append_citations(np.int16(2010), np.array([5, 2, 1], dtype=np.int16))
+        >>> journal.ifCalc(delta=10)
+        {np.int16(2010): np.float16(2.0)}
+    """
+
+    name: str
+    _citations: CitationMap = field(default_factory=dict)
+
+    @property
+    def citations(self) -> CitationMap:
+        """Read-only access to citation mapping.
+
+        Returns:
+            Dictionary of year to citation arrays.
+        """
+
+        return self._citations
+
+    def __getitem__(self, year: int | Year) -> CitationArray:
+        """Return citations for a specific year.
+
+        Args:
+            year: IF target year.
+
+        Returns:
+            Citation array for that year.
+
+        Raises:
+            KeyError: If year does not exist.
+        """
+
+        year_key: Year = np.int16(year)
+        return self._citations[year_key]
+
+    def append_citations(self, year: int | Year, citations: CitationArray) -> None:
+        """Append citation values to an existing year bucket.
+
+        Args:
+            year: IF target year.
+            citations: Citation values to append.
+        """
+
+        year_key: Year = np.int16(year)
+        if year_key in self._citations:
+            self._citations[year_key] = np.concatenate((self._citations[year_key], citations))
+            return
+        self._citations[year_key] = citations.copy()
+
+    def ifCalc(self, delta: float) -> IFResult:
+        """Calculate IF values by year after trimming top and bottom delta.
+
+        The method does not modify original citation data. Trimming is performed
+        on sorted copies per year.
+
+        Args:
+            delta: Trimming amount for each tail.
+                - `0 <= delta < 0.5` means ratio directly.
+                - `1 <= delta < 50` means percentage and will be converted to ratio.
+
+        Returns:
+            Dictionary mapping year to trimmed IF value (`np.float16`).
+
+        Raises:
+            ValueError: If `delta` is out of range or sample is invalid.
+
+        Examples:
+            >>> journal = Journal(name="Demo")
+            >>> journal.append_citations(np.int16(2010), np.array([1, 2, 3, 100], dtype=np.int16))
+            >>> journal.ifCalc(delta=25)
+            {np.int16(2010): np.float16(2.5)}
+        """
+
+        if delta < 0:
+            raise ValueError("delta must be non-negative.")
+
+        ratio: float = delta / 100.0 if delta >= 1 else delta
+        if ratio >= 0.5:
+            raise ValueError("delta is too large; trim ratio must be < 0.5.")
+
+        result: IFResult = {}
+        for year, citations in sorted(self._citations.items(), key=lambda item: int(item[0])):
+            if citations.size == 0:
+                raise ValueError(f"Year {int(year)} has no citation data.")
+            trimmed: CitationArray = _trim_sorted(citations, ratio)
+            if_value: np.float16 = np.float16(np.mean(trimmed, dtype=np.float64))
+            result[np.int16(year)] = if_value
+        return result
+
+
+def read(file_path: str | Path, journal: Journal | None = None) -> Journal:
+    """Read Web of Science txt export and append citations to a Journal.
+
+    The function parses:
+    - journal name from the first line (before first "and"), converted to CamelCase
+    - two publication years from the first line
+    - target year column as the next year of the publication year range
+
+    Citation values from the target year column are appended, not overwritten.
+
+    Args:
+        file_path: Path to exported txt file.
+        journal: Existing journal object to append data into.
+
+    Returns:
+        A journal object containing merged citation data.
+
+    Raises:
+        FileNotFoundError: If file does not exist.
+        ValueError: If parsing fails or journal mismatch is detected.
+
+    Examples:
+        >>> loaded = read("2010.txt")
+        >>> loaded.ifCalc(delta=10)
+        {np.int16(2010): np.float16(...)}
+    """
+
+    path: Path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    content: str = path.read_text(encoding="utf-8-sig")
+    lines: list[str] = content.splitlines()
+    if not lines:
+        raise ValueError("Input file is empty.")
+
+    query_line: str = lines[0].strip()
+    parsed_name, target_year = _parse_query_line(query_line)
+
+    if journal is None:
+        target_journal: Journal = Journal(name=parsed_name)
+    else:
+        target_journal = journal
+        if target_journal.name != parsed_name:
+            raise ValueError(
+                "Journal name mismatch when appending data: "
+                f"expected {target_journal.name}, got {parsed_name}."
+            )
+
+    header_index: int = _find_header_index(lines)
+    header, rows = _parse_csv_rows(lines, header_index)
+
+    year_column_name: str = str(int(target_year))
+    if year_column_name not in header:
+        raise ValueError(f"Target year column '{year_column_name}' not found in header.")
+    year_column_index: int = header.index(year_column_name)
+
+    values: list[int] = []
+    for row in rows:
+        if len(row) <= year_column_index:
+            continue
+        raw_value: str = row[year_column_index].strip()
+        if raw_value == "":
+            continue
+        try:
+            citation: int = int(raw_value)
+        except ValueError:
+            continue
+        values.append(citation)
+
+    citation_array: CitationArray = _to_citation_array(values)
+    target_journal.append_citations(target_year, citation_array)
+    return target_journal
