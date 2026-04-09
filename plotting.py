@@ -85,7 +85,7 @@ def plot_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -
         ValueError: If CSV format is invalid.
 
     Examples:
-        >>> image_path = plot_from_csv("ChinesePhysicsCIF.csv")
+        >>> image_path = plot_from_csv("chinese physics c.csv")
         >>> image_path.suffix
         '.png'
     """

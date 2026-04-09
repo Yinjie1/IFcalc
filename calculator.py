@@ -27,19 +27,19 @@ _JOURNAL_REGISTRY: dict[str, Journal] = {}
 
 
 def _register_journal(journal: Journal) -> None:
-    """Register a journal object in memory by name.
+    """Register a journal object in memory by identifier.
 
     Args:
         journal: Journal instance to register.
 
     Raises:
-        ValueError: If another journal with the same name already exists.
+        ValueError: If another journal with the same identifier already exists.
     """
 
-    existing: Journal | None = _JOURNAL_REGISTRY.get(journal.name)
+    existing: Journal | None = _JOURNAL_REGISTRY.get(journal.identifier)
     if existing is not None and existing is not journal:
-        raise ValueError(f"Journal '{journal.name}' already exists in memory.")
-    _JOURNAL_REGISTRY[journal.name] = journal
+        raise ValueError(f"Journal '{journal.identifier}' already exists in memory.")
+    _JOURNAL_REGISTRY[journal.identifier] = journal
 
 
 def _to_camel_case(raw_name: str) -> str:
@@ -58,8 +58,8 @@ def _to_camel_case(raw_name: str) -> str:
     return "".join(word.capitalize() for word in words)
 
 
-def _parse_query_line(query_line: str) -> tuple[str, Year]:
-    """Parse journal name and target citation year from first line.
+def _parse_query_line(query_line: str) -> tuple[str, str, Year]:
+    """Parse journal identifier/name and target citation year from first line.
 
     The first line is expected to look like:
     "journal name and 2008 or 2009 (Publication Years) ..."
@@ -68,7 +68,7 @@ def _parse_query_line(query_line: str) -> tuple[str, Year]:
         query_line: First line in exported txt file.
 
     Returns:
-        A tuple of `(journal_name_camel_case, target_year)`.
+        A tuple of `(journal_identifier, journal_name_raw, target_year)`.
 
     Raises:
         ValueError: If line format is invalid or years cannot be inferred.
@@ -80,14 +80,14 @@ def _parse_query_line(query_line: str) -> tuple[str, Year]:
         raise ValueError("Cannot parse query line: missing 'and' separator.")
 
     raw_journal_name: str = query_line[:split_index].strip()
-    journal_name: str = _to_camel_case(raw_journal_name)
+    journal_identifier: str = _to_camel_case(raw_journal_name)
 
     years: list[int] = [int(match.group()) for match in _YEAR_PATTERN.finditer(query_line)]
     if len(years) < 2:
         raise ValueError("Cannot infer publication years from query line.")
 
     target_year: Year = np.int16(max(years[0], years[1]) + 1)
-    return journal_name, target_year
+    return journal_identifier, raw_journal_name, target_year
 
 
 def _parse_csv_rows(lines: list[str], header_index: int) -> tuple[list[str], list[list[str]]]:
@@ -187,11 +187,12 @@ class Journal:
     """Journal citations grouped by IF target year.
 
     Attributes:
-        name: Journal name in CamelCase.
+        identifier: Normalized journal identifier in CamelCase.
+        name: Raw journal name from source text.
         _citations: Mapping of target year to citation array.
 
     Examples:
-        >>> journal = Journal(name="ChinesePhysicsC")
+        >>> journal = Journal(identifier="ChinesePhysicsC", name="chinese physics c")
         >>> journal.append_citations(np.int16(2010), np.array([5, 2, 1], dtype=np.int16))
         >>> journal[np.int16(2010)]
         array([5, 2, 1], dtype=int16)
@@ -206,6 +207,7 @@ class Journal:
         {np.int16(2010): np.float16(2.0)}
     """
 
+    identifier: str
     name: str
     _citations: CitationMap = field(default_factory=dict)
 
@@ -261,7 +263,7 @@ class Journal:
             ValueError: If `delta` is out of range or sample is invalid.
 
         Examples:
-            >>> journal = Journal(name="Demo")
+            >>> journal = Journal(identifier="Demo", name="demo")
             >>> journal.append_citations(np.int16(2010), np.array([1, 2, 3, 100], dtype=np.int16))
             >>> journal.ifCalc(delta=25)
             {np.int16(2010): np.float16(2.5)}
@@ -296,7 +298,7 @@ class Journal:
             OSError: If output directory or file cannot be written.
 
         Examples:
-            >>> journal = Journal(name="Demo")
+            >>> journal = Journal(identifier="Demo", name="demo")
             >>> journal.append_citations(np.int16(2010), np.array([1, 2], dtype=np.int16))
             >>> path = journal.export()
             >>> path.name
@@ -307,6 +309,7 @@ class Journal:
         export_dir.mkdir(parents=True, exist_ok=True)
 
         payload: dict[str, object] = {
+            "identifier": self.identifier,
             "name": self.name,
             "citations": {
                 str(int(year)): citations.astype(np.int16).tolist()
@@ -314,7 +317,7 @@ class Journal:
             },
         }
 
-        file_path: Path = export_dir / f"{self.name}.json"
+        file_path: Path = export_dir / f"{self.identifier}.json"
         file_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -326,7 +329,8 @@ def read(file_path: str | Path, journal: Journal | None = None) -> Journal:
     """Read Web of Science txt export and append citations to a Journal.
 
     The function parses:
-    - journal name from the first line (before first "and"), converted to CamelCase
+    - journal identifier from the first line (before first "and"), converted to CamelCase
+    - raw journal name from the same query segment
     - two publication years from the first line
     - target year column as the next year of the publication year range
 
@@ -359,16 +363,16 @@ def read(file_path: str | Path, journal: Journal | None = None) -> Journal:
         raise ValueError("Input file is empty.")
 
     query_line: str = lines[0].strip()
-    parsed_name, target_year = _parse_query_line(query_line)
+    parsed_identifier, parsed_name, target_year = _parse_query_line(query_line)
 
     if journal is None:
-        target_journal: Journal = Journal(name=parsed_name)
+        target_journal: Journal = Journal(identifier=parsed_identifier, name=parsed_name)
     else:
         target_journal = journal
-        if target_journal.name != parsed_name:
+        if target_journal.identifier != parsed_identifier:
             raise ValueError(
-                "Journal name mismatch when appending data: "
-                f"expected {target_journal.name}, got {parsed_name}."
+                "Journal identifier mismatch when appending data: "
+                f"expected {target_journal.identifier}, got {parsed_identifier}."
             )
 
     header_index: int = _find_header_index(lines)
@@ -401,8 +405,8 @@ def read(file_path: str | Path, journal: Journal | None = None) -> Journal:
 def import_journal(file_path: str | Path) -> Journal:
     """Import a journal from exported JSON file.
 
-    The function checks in-memory registry by journal name. If a journal with the
-    same name already exists in memory, import is rejected.
+    The function checks in-memory registry by journal identifier. If a journal
+    with the same identifier already exists in memory, import is rejected.
 
     Args:
         file_path: Path to exported journal JSON file.
@@ -416,7 +420,7 @@ def import_journal(file_path: str | Path) -> Journal:
 
     Examples:
         >>> imported = import_journal("./data/ChinesePhysicsC.json")
-        >>> imported.name
+        >>> imported.identifier
         'ChinesePhysicsC'
     """
 
@@ -429,17 +433,24 @@ def import_journal(file_path: str | Path) -> Journal:
     if not isinstance(data, dict):
         raise ValueError("Invalid journal JSON: root must be an object.")
 
+    raw_identifier: object = data.get("identifier")
     raw_name: object = data.get("name")
     raw_citations: object = data.get("citations")
+
+    if raw_identifier is None and isinstance(raw_name, str):
+        raw_identifier = _to_camel_case(raw_name)
+
+    if not isinstance(raw_identifier, str) or raw_identifier.strip() == "":
+        raise ValueError("Invalid journal JSON: 'identifier' must be a non-empty string.")
     if not isinstance(raw_name, str) or raw_name.strip() == "":
         raise ValueError("Invalid journal JSON: 'name' must be a non-empty string.")
     if not isinstance(raw_citations, dict):
         raise ValueError("Invalid journal JSON: 'citations' must be an object.")
 
-    if raw_name in _JOURNAL_REGISTRY:
-        raise ValueError(f"Journal '{raw_name}' already exists in memory.")
+    if raw_identifier in _JOURNAL_REGISTRY:
+        raise ValueError(f"Journal '{raw_identifier}' already exists in memory.")
 
-    journal: Journal = Journal(name=raw_name)
+    journal: Journal = Journal(identifier=raw_identifier, name=raw_name)
     for raw_year, raw_values in raw_citations.items():
         try:
             year: Year = np.int16(int(raw_year))
@@ -483,7 +494,7 @@ def write(journal: Journal, *deltas: float) -> Path:
         >>> j = read("2010.txt")
         >>> path = write(j, 0, 5, 10)
         >>> path.name
-        'ChinesePhysicsCIF.csv'
+        'chinese physics c.csv'
     """
 
     if len(deltas) == 0:
@@ -491,7 +502,7 @@ def write(journal: Journal, *deltas: float) -> Path:
 
     years: list[Year] = sorted(journal.citations.keys(), key=int)
 
-    file_path: Path = Path(f"{journal.name}IF.csv")
+    file_path: Path = Path(f"{journal.name}.csv")
 
     with file_path.open("w", encoding="utf-8", newline="") as fp:
         writer: csv.writer = csv.writer(fp)
