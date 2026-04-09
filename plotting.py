@@ -10,6 +10,20 @@ import csv
 from pathlib import Path
 
 
+def _to_display_title(raw_name: str) -> str:
+    """Convert raw journal name to title-style text for plotting.
+
+    Args:
+        raw_name: Raw journal name string.
+
+    Returns:
+        Name with each word capitalized.
+    """
+
+    normalized: str = raw_name.replace("_", " ").replace("-", " ").strip()
+    return " ".join(word.capitalize() for word in normalized.split())
+
+
 def _load_if_csv(csv_path: Path) -> tuple[list[int], list[tuple[str, list[float]]]]:
     """Load IF table exported by `write()` from CSV.
 
@@ -103,14 +117,16 @@ def plot_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -
         ) from exc
 
     years, series = _load_if_csv(path)
+    title_text: str = _to_display_title(path.stem)
 
     figure = plt.figure(figsize=(8, 5), dpi=120)
     for delta_label, values in series:
-        plt.plot(years, values, marker="o", linewidth=1.6, label=f"delta={delta_label}")
+        legend_label: str = delta_label if delta_label.endswith("%") else f"{delta_label}%"
+        plt.plot(years, values, marker="o", linewidth=1.6, label=legend_label)
 
     plt.xlabel("Year")
     plt.ylabel("IF")
-    plt.title(f"IF Curves - {path.stem}")
+    plt.title(title_text)
     plt.xticks(years)
     plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
     plt.legend()
