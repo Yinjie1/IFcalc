@@ -460,3 +460,49 @@ def import_journal(file_path: str | Path) -> Journal:
 
     _register_journal(journal)
     return journal
+
+
+def write(journal: Journal, *deltas: float) -> Path:
+    """Write IF results for multiple deltas into one CSV file.
+
+    CSV format:
+    - header: `delta,<year1>,<year2>,...`
+    - each row: `delta_value,if_year1,if_year2,...`
+
+    Args:
+        journal: Journal object to calculate IF from.
+        *deltas: Arbitrary number of trim parameters.
+
+    Returns:
+        Absolute path to the generated CSV file.
+
+    Raises:
+        ValueError: If no delta is provided.
+
+    Examples:
+        >>> j = read("2010.txt")
+        >>> path = write(j, 0, 5, 10)
+        >>> path.name
+        'ChinesePhysicsCIF.csv'
+    """
+
+    if len(deltas) == 0:
+        raise ValueError("At least one delta value must be provided.")
+
+    years: list[Year] = sorted(journal.citations.keys(), key=int)
+
+    file_path: Path = Path(f"{journal.name}IF.csv")
+
+    with file_path.open("w", encoding="utf-8", newline="") as fp:
+        writer: csv.writer = csv.writer(fp)
+        header: list[str] = ["delta", *[str(int(year)) for year in years]]
+        writer.writerow(header)
+
+        for delta in deltas:
+            if_values: IFResult = journal.ifCalc(delta)
+            row: list[str] = [str(delta)]
+            for year in years:
+                row.append(str(float(if_values[year])))
+            writer.writerow(row)
+
+    return file_path.resolve()
