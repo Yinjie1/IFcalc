@@ -3,8 +3,9 @@
 Public API:
 - `Journal`: journal citation container.
 - `read`: import citations from Web of Science txt export.
+- `import_journal`: load a Journal from exported JSON.
 """
 
-from .calculator import Journal, read
+from .calculator import Journal, import_journal, read
 
-__all__: list[str] = ["Journal", "read"]
+__all__: list[str] = ["Journal", "read", "import_journal"]

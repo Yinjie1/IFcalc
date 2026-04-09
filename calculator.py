@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import csv
+import json
 import re
 from pathlib import Path
 
@@ -21,6 +22,23 @@ type IFResult = dict[Year, np.float16]
 
 _YEAR_PATTERN: re.Pattern[str] = re.compile(r"\b(19|20)\d{2}\b")
 _INT16_INFO: np.iinfo[np.int16] = np.iinfo(np.int16)
+_JOURNAL_REGISTRY: dict[str, Journal] = {}
+
+
+def _register_journal(journal: Journal) -> None:
+    """Register a journal object in memory by name.
+
+    Args:
+        journal: Journal instance to register.
+
+    Raises:
+        ValueError: If another journal with the same name already exists.
+    """
+
+    existing: Journal | None = _JOURNAL_REGISTRY.get(journal.name)
+    if existing is not None and existing is not journal:
+        raise ValueError(f"Journal '{journal.name}' already exists in memory.")
+    _JOURNAL_REGISTRY[journal.name] = journal
 
 
 def _to_camel_case(raw_name: str) -> str:
@@ -261,6 +279,44 @@ class Journal:
             result[np.int16(year)] = if_value
         return result
 
+    def export(self, output_dir: str | Path = "./data") -> Path:
+        """Export the whole journal to a JSON file.
+
+        Args:
+            output_dir: Directory where JSON file will be written.
+
+        Returns:
+            Absolute path of exported JSON file.
+
+        Raises:
+            OSError: If output directory or file cannot be written.
+
+        Examples:
+            >>> journal = Journal(name="Demo")
+            >>> journal.append_citations(np.int16(2010), np.array([1, 2], dtype=np.int16))
+            >>> path = journal.export()
+            >>> path.name
+            'Demo.json'
+        """
+
+        export_dir: Path = Path(output_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        payload: dict[str, object] = {
+            "name": self.name,
+            "citations": {
+                str(int(year)): citations.astype(np.int16).tolist()
+                for year, citations in sorted(self._citations.items(), key=lambda item: int(item[0]))
+            },
+        }
+
+        file_path: Path = export_dir / f"{self.name}.json"
+        file_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return file_path.resolve()
+
 
 def read(file_path: str | Path, journal: Journal | None = None) -> Journal:
     """Read Web of Science txt export and append citations to a Journal.
@@ -334,4 +390,69 @@ def read(file_path: str | Path, journal: Journal | None = None) -> Journal:
 
     citation_array: CitationArray = _to_citation_array(values)
     target_journal.append_citations(target_year, citation_array)
+    _register_journal(target_journal)
     return target_journal
+
+
+def import_journal(file_path: str | Path) -> Journal:
+    """Import a journal from exported JSON file.
+
+    The function checks in-memory registry by journal name. If a journal with the
+    same name already exists in memory, import is rejected.
+
+    Args:
+        file_path: Path to exported journal JSON file.
+
+    Returns:
+        Imported Journal object.
+
+    Raises:
+        FileNotFoundError: If file does not exist.
+        ValueError: If file schema is invalid or same journal is already loaded.
+
+    Examples:
+        >>> imported = import_journal("./data/ChinesePhysicsC.json")
+        >>> imported.name
+        'ChinesePhysicsC'
+    """
+
+    path: Path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    raw_content: str = path.read_text(encoding="utf-8")
+    data: object = json.loads(raw_content)
+    if not isinstance(data, dict):
+        raise ValueError("Invalid journal JSON: root must be an object.")
+
+    raw_name: object = data.get("name")
+    raw_citations: object = data.get("citations")
+    if not isinstance(raw_name, str) or raw_name.strip() == "":
+        raise ValueError("Invalid journal JSON: 'name' must be a non-empty string.")
+    if not isinstance(raw_citations, dict):
+        raise ValueError("Invalid journal JSON: 'citations' must be an object.")
+
+    if raw_name in _JOURNAL_REGISTRY:
+        raise ValueError(f"Journal '{raw_name}' already exists in memory.")
+
+    journal: Journal = Journal(name=raw_name)
+    for raw_year, raw_values in raw_citations.items():
+        try:
+            year: Year = np.int16(int(raw_year))
+        except ValueError as exc:
+            raise ValueError(f"Invalid year key in JSON: {raw_year}") from exc
+
+        if not isinstance(raw_values, list):
+            raise ValueError(f"Invalid citations for year {raw_year}: must be a list.")
+
+        citation_values: list[int] = []
+        for raw_value in raw_values:
+            if not isinstance(raw_value, int):
+                raise ValueError(f"Invalid citation value for year {raw_year}: {raw_value!r}")
+            citation_values.append(raw_value)
+
+        citation_array: CitationArray = _to_citation_array(citation_values)
+        journal.append_citations(year, citation_array)
+
+    _register_journal(journal)
+    return journal
