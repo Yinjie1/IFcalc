@@ -11,6 +11,7 @@ import csv
 import json
 import re
 from pathlib import Path
+from collections.abc import Iterator
 
 import numpy as np
 import numpy.typing as npt
@@ -192,6 +193,15 @@ class Journal:
     Examples:
         >>> journal = Journal(name="ChinesePhysicsC")
         >>> journal.append_citations(np.int16(2010), np.array([5, 2, 1], dtype=np.int16))
+        >>> journal[np.int16(2010)]
+        array([5, 2, 1], dtype=int16)
+        >>> len(journal)
+        1
+        >>> for year in journal:
+        ...     print(int(year))
+        2010
+        >>> list(journal)
+        [np.int16(2010)]
         >>> journal.ifCalc(delta=10)
         {np.int16(2010): np.float16(2.0)}
     """
@@ -210,20 +220,14 @@ class Journal:
         return self._citations
 
     def __getitem__(self, year: int | Year) -> CitationArray:
-        """Return citations for a specific year.
-
-        Args:
-            year: IF target year.
-
-        Returns:
-            Citation array for that year.
-
-        Raises:
-            KeyError: If year does not exist.
-        """
-
         year_key: Year = np.int16(year)
         return self._citations[year_key]
+
+    def __len__(self) -> int:
+        return len(self._citations)
+
+    def __iter__(self) -> Iterator[Year]:
+        return iter(self._citations)
 
     def append_citations(self, year: int | Year, citations: CitationArray) -> None:
         """Append citation values to an existing year bucket.
