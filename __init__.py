@@ -11,20 +11,20 @@ Optional plotting API (lazy import):
 """
 
 from typing import Any
+from pathlib import Path
 
 from .calculator import Journal, import_journal, read, write
 
 __all__: list[str] = ["Journal", "read", "import_journal", "write", "plot_from_csv"]
 
 
-def __getattr__(name: str) -> Any:
-    """Lazily expose optional plotting functions.
+def plot_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Lazily draw IF curves from CSV exported by `write(...)`.
 
-    This avoids importing matplotlib unless plotting APIs are actually used.
+    This wrapper keeps plotting optional and avoids importing plotting code
+    until the function is actually called.
     """
 
-    if name == "plot_from_csv":
-        from .plotting import plot_from_csv
+    from .plotting import plot_from_csv as _plot_from_csv
 
-        return plot_from_csv
-    raise AttributeError(f"module 'IFcalc' has no attribute {name!r}")
+    return _plot_from_csv(csv_path, output_path)
