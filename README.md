@@ -33,7 +33,7 @@ $$
 - `Journal.name`: 原始期刊名称(保留空格)
 - `Journal._citations`: `dict[Year, np.ndarray[np.int16]]`
 
-`Journal` 支持 `journal[year]`, `len(journal)`, `for year in journal`.
+`Journal` 对象支持字典索引 `journal[year]`, 求长度`len(journal)`, 迭代`for year in journal`.
 
 ### 主要 API
 
@@ -138,9 +138,10 @@ import shutil
 
 import IFcalc
 
-INPUT_DIR: Path = Path("./raw/SCIENCE")
-OUTPUT_DIR: Path = Path("./OUT")
-INPUT_PATTERN: str = "*.txt"
+INPUT_DIR: Path = Path("./raw/SCIENCE") # WoS 导出的 txt 文件存放目录
+OUTPUT_DIR: Path = Path("./OUT") # 处理后的数据输出目录
+INPUT_PATTERN: str = "*.txt" # 一般不用改
+# 首尾裁减的比例
 DELTAS: tuple[int, ...] = (0, 1, 3, 5, 7, 10, 12, 15, 18, 20, 25)
 
 
