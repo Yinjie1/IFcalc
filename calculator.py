@@ -58,6 +58,24 @@ def _to_camel_case(raw_name: str) -> str:
     return "".join(word.capitalize() for word in words)
 
 
+def _canonicalize_journal_name(raw_name: str) -> str:
+    """Canonicalize raw journal name text for stable identifier building.
+
+    This removes descriptive parenthetical suffixes from query text (for example
+    `(Publication Titles)`) and normalizes whitespace.
+
+    Args:
+        raw_name: Raw journal name segment from query line.
+
+    Returns:
+        Canonicalized journal name string.
+    """
+
+    without_parentheses: str = re.sub(r"\s*\([^)]*\)", "", raw_name)
+    normalized_spaces: str = re.sub(r"\s+", " ", without_parentheses).strip()
+    return normalized_spaces
+
+
 def _parse_query_line(query_line: str) -> tuple[str, str, Year]:
     """Parse journal identifier/name and target citation year from first line.
 
@@ -80,13 +98,16 @@ def _parse_query_line(query_line: str) -> tuple[str, str, Year]:
         raise ValueError("Cannot parse query line: missing 'and' separator.")
 
     raw_journal_name: str = query_line[:split_index].strip()
-    journal_identifier: str = _to_camel_case(raw_journal_name)
+    canonical_name: str = _canonicalize_journal_name(raw_journal_name)
+    journal_identifier: str = _to_camel_case(canonical_name)
 
     years: list[int] = [int(match.group()) for match in _YEAR_PATTERN.finditer(query_line)]
-    if len(years) < 2:
+    if len(years) == 0:
         raise ValueError("Cannot infer publication years from query line.")
 
-    target_year: Year = np.int16(max(years[0], years[1]) + 1)
+    # Normal case: two publication years (y-2, y-1) -> target year y.
+    # Fallback case: only one publication year (y-1) -> still compute target y.
+    target_year: Year = np.int16(max(years) + 1)
     return journal_identifier, raw_journal_name, target_year
 
 
