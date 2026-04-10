@@ -22,6 +22,7 @@ $$
 - `read(path, journal=None)`
   - 读取 Web of Science 导出的 txt
   - 解析期刊原始名称与目标年份列
+  - 兼容单年份首行(如仅 `2011`，自动推导目标年 `2012`)
   - 追加引用数据(不覆盖)
 - `Journal.ifCalc(delta)`
   - 计算各年份 IF
@@ -32,6 +33,9 @@ $$
 - `write(journal, *deltas)`
   - 输出多组 delta 的 IF 结果到 CSV
   - 文件名使用期刊原始名称：`<name>.csv`
+- `transpose(path)`
+  - 对 CSV 做行列转置
+  - 输出同目录 `<原文件名>-t.csv`
 - `plot_from_csv(csv_path, output_path=None)`
   - 从 `write(...)` 生成的 CSV 直接画图
   - 绘图模块懒加载，不影响无 matplotlib 环境下的核心计算
@@ -55,9 +59,12 @@ $$
 `read(...)` 主要步骤：
 
 1. 从首行提取原始期刊名和 publication years
-2. 推导目标引用列年份(如 2008/2009 -> 2010)
+2. 推导目标引用列年份(如 2008/2009 -> 2010，或 2011 -> 2012)
 3. 解析 CSV 表头和数据行
 4. 提取目标年份列并追加到 Journal
+
+> [!NOTE]
+> 期刊 `identifier` 在构建时会做规范化（去除首行里的括号说明如 `(Publication Titles)`），避免同一期刊在不同文件中的标识不一致。
 
 ### 3) 计算流程
 
@@ -92,8 +99,6 @@ print(if_values)
 ### 示例 2: 导出/导入 Journal
 
 ```python
-import IFcalc
-
 journal = IFcalc.read("2010.txt")
 json_path = journal.export()
 
@@ -105,8 +110,6 @@ print(loaded.identifier)
 ### 示例 3: 输出多组 delta 到 CSV
 
 ```python
-import IFcalc
-
 journal = IFcalc.read("2010.txt")
 csv_path = IFcalc.write(journal, 0, 5, 10, 15)
 print(csv_path)
@@ -115,10 +118,15 @@ print(csv_path)
 ### 示例 4: 从 CSV 直接绘图(可选)
 
 ```python
-import IFcalc
-
 png_path = IFcalc.plot_from_csv("chinese physics c.csv")
 print(png_path)
+```
+
+### 示例 5: 转置 CSV
+
+```python
+transposed_path = IFcalc.transpose("chinese physics c.csv")
+print(transposed_path)
 ```
 
 > [!NOTE]
