@@ -517,3 +517,57 @@ def write(journal: Journal, *deltas: float) -> Path:
             writer.writerow(row)
 
     return file_path.resolve()
+
+
+def transpose(file_path: str | Path) -> Path:
+    """Transpose rows and columns of a CSV file.
+
+    The transposed CSV will be written in the same directory with suffix
+    `-t.csv`, and the output path will be returned.
+
+    Args:
+        file_path: Source CSV file path.
+
+    Returns:
+        Absolute path of transposed CSV file.
+
+    Raises:
+        FileNotFoundError: If source file does not exist.
+        ValueError: If CSV is empty or has inconsistent row lengths.
+
+    Examples:
+        >>> path = transpose("chinese physics c.csv")
+        >>> path.name
+        'chinese physics c-t.csv'
+    """
+
+    path: Path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV file not found: {path}")
+
+    with path.open("r", encoding="utf-8", newline="") as fp:
+        reader: csv.reader = csv.reader(fp)
+        rows: list[list[str]] = list(reader)
+
+    if len(rows) == 0:
+        raise ValueError("CSV is empty and cannot be transposed.")
+
+    column_count: int = len(rows[0])
+    if column_count == 0:
+        raise ValueError("CSV has an empty header row.")
+
+    for index, row in enumerate(rows, start=1):
+        if len(row) != column_count:
+            raise ValueError(
+                f"CSV has inconsistent row length at line {index}: "
+                f"expected {column_count}, got {len(row)}."
+            )
+
+    transposed_rows: list[list[str]] = [list(column) for column in zip(*rows)]
+    output_path: Path = path.with_name(f"{path.stem}-t.csv")
+
+    with output_path.open("w", encoding="utf-8", newline="") as fp:
+        writer: csv.writer = csv.writer(fp)
+        writer.writerows(transposed_rows)
+
+    return output_path.resolve()
