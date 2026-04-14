@@ -504,8 +504,9 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     Args:
         journal: Journal object to calculate IF from.
         *deltas: Arbitrary number of trim parameters.
-        analyse: Whether to append summary rows at file bottom.
-            When `True`, appends `mean`, `std`, and `rsd` rows.
+        analyse: Whether to append row-wise summary columns.
+            When `True`, appends `mean`, `std`, and `rsd` columns for each
+            delta row, calculated across year values in that row.
 
     Returns:
         Absolute path to the generated CSV file.
@@ -530,9 +531,10 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     with file_path.open("w", encoding="utf-8", newline="") as fp:
         writer: csv.writer = csv.writer(fp)
         header: list[str] = ["delta", *[str(int(year)) for year in years]]
+        if analyse:
+            header.extend(["mean", "std", "rsd"])
         writer.writerow(header)
 
-        matrix_values: list[list[float]] = []
         for delta in deltas:
             if_values: IFResult = journal.ifCalc(delta)
             row: list[str] = [str(delta)]
@@ -541,24 +543,15 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
                 value: float = float(if_values[year])
                 row_values.append(value)
                 row.append(str(value))
-            matrix_values.append(row_values)
+
+            if analyse:
+                value_array: npt.NDArray[np.float64] = np.array(row_values, dtype=np.float64)
+                row_mean: float = float(np.mean(value_array))
+                row_std: float = float(np.std(value_array))
+                row_rsd: float = 0.0 if row_mean == 0.0 else float(row_std / row_mean)
+                row.extend([str(row_mean), str(row_std), str(row_rsd)])
+
             writer.writerow(row)
-
-        if analyse:
-            value_array: npt.NDArray[np.float64] = np.array(matrix_values, dtype=np.float64)
-            year_means: npt.NDArray[np.float64] = np.mean(value_array, axis=0)
-            year_stds: npt.NDArray[np.float64] = np.std(value_array, axis=0)
-
-            year_rsds: list[float] = []
-            for mean_value, std_value in zip(year_means, year_stds, strict=True):
-                if mean_value == 0.0:
-                    year_rsds.append(0.0)
-                else:
-                    year_rsds.append(float(std_value / mean_value))
-
-            writer.writerow(["mean", *[str(float(value)) for value in year_means]])
-            writer.writerow(["std", *[str(float(value)) for value in year_stds]])
-            writer.writerow(["rsd", *[str(value) for value in year_rsds]])
 
     return file_path.resolve()
 
