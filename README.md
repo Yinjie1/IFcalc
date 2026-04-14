@@ -47,16 +47,22 @@ $$
   - 按 `identifier` 做内存重复检查
 - `write(journal, *deltas)`
   - 批量输出 IF 到 `<name>.csv`
+  - `analyse=True` 时另存 `<name>_analysis.csv` (每个 delta 的 `mean/std/rsd`)
+- `analyse(path)`
+  - 基于 `<name>.csv` 计算相邻 delta 的下降百分比
+  - 输出 `<name>_decrease.csv` (不修改原文件)
 - `transpose(path)`
   - 将 CSV 行列转置为 `<原文件名>-t.csv`
 - `plot_from_csv(csv_path, output_path=None)`
   - 从 `write(...)` 结果直接绘图(懒加载 matplotlib)
+- `plot_analysis_from_csv(csv_path, output_path=None)`
+  - 绘制 `mean` 实线、`mean±std` 虚线并填充半透明红色区域
 
 ### 关键流程
 
 1. `read(...)`: 解析首行 -> 推导目标年 -> 读取目标列 -> 追加到 `Journal`
 2. `ifCalc(delta)`: 标准化 `delta` -> 排序 -> 裁剪头尾 -> 求均值
-3. `write(...)` / `transpose(...)` / `plot_from_csv(...)`: 输出结果表及可视化
+3. `write(...)` / `analyse(...)` / `transpose(...)` / `plot_from_csv(...)` / `plot_analysis_from_csv(...)`: 输出结果表及可视化
 
 > [!NOTE]
 > 构建 `identifier` 时会去除首行中的括号说明(如 `(Publication Titles)`), 避免同一期刊在不同文件中的标识不一致.
@@ -76,10 +82,9 @@ if_values = journal.ifCalc(10) # 裁减10%并计算IF
 print(if_values)
 ```
 
-### 示例 2: 导出/导入 Journal
+### 示例 2: 导出/导入 Journal 对象
 
 ```python
-journal = IFcalc.read("2010.txt")
 json_path = journal.export()
 
 # 如果内存中已存在同 identifier 的 Journal, 会抛 ValueError
@@ -87,26 +92,32 @@ loaded = IFcalc.import_journal(json_path)
 print(loaded.identifier)
 ```
 
-### 示例 3: 按多种比例裁减, 并输出 CSV 表格
+### 示例 3: 按多种比例裁减, 并输出 CSV 表格并绘图
 
 ```python
-journal = IFcalc.read("2010.txt")
 csv_path = IFcalc.write(journal, 0, 5, 10, 15)
-print(csv_path)
+IFcalc.plot_from_csv(csv_path)
 ```
 
-### 示例 4: 从 CSV 直接绘图
+### 示例 4: 行列转置
 
 ```python
-png_path = IFcalc.plot_from_csv("chinese physics c.csv")
-print(png_path)
+IFcalc.transpose("chinese physics c.csv")
 ```
 
-### 示例 5: CSV 行列转置
+### 示例 6: 写出分析文件并绘图
 
 ```python
-transposed_path = IFcalc.transpose("chinese physics c.csv")
-print(transposed_path)
+# analyse=True时计算其平均值, 标准差和相对标准差
+csv_path = IFcalc.write(journal, 0, 5, 10, 15, analyse=True)
+IFcalc.plot_analysis_from_csv(f"{csv_path.stem}_analysis.csv")
+```
+
+### 示例 7: 生成下降比例文件并绘图
+
+```python
+decrease_path = IFcalc.analyse("chinese physics c.csv")
+IFcalc.plot_from_csv(decrease_path)
 ```
 
 ## 完整工作流示例
