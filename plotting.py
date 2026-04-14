@@ -206,9 +206,9 @@ def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None 
     title_text: str = _to_display_title(path.stem)
 
     figure = plt.figure(figsize=(8, 5), dpi=120)
-    plt.plot(deltas, means, color="tab:blue", linewidth=1.8, label="mean")
-    plt.plot(deltas, upper, color="tab:red", linestyle="--", linewidth=1.3, label="mean + std")
-    plt.plot(deltas, lower, color="tab:red", linestyle="--", linewidth=1.3, label="mean - std")
+    plt.plot(deltas, means, color="tab:blue", linewidth=1.8)
+    plt.plot(deltas, upper, color="tab:red", linestyle="--", linewidth=1.3)
+    plt.plot(deltas, lower, color="tab:red", linestyle="--", linewidth=1.3)
     plt.fill_between(deltas, lower, upper, color="red", alpha=0.2)
 
     plt.xlabel("Delta")
@@ -216,7 +216,6 @@ def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None 
     plt.title(title_text)
     plt.xticks(deltas)
     plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
-    plt.legend()
     plt.tight_layout()
 
     target_path: Path = Path(output_path) if output_path is not None else path.with_suffix(".png")
