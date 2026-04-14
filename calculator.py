@@ -494,7 +494,7 @@ def import_journal(file_path: str | Path) -> Journal:
     return journal
 
 
-def write(journal: Journal, *deltas: float) -> Path:
+def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     """Write IF results for multiple deltas into one CSV file.
 
     CSV format:
@@ -504,6 +504,8 @@ def write(journal: Journal, *deltas: float) -> Path:
     Args:
         journal: Journal object to calculate IF from.
         *deltas: Arbitrary number of trim parameters.
+        analyse: Whether to append summary rows at file bottom.
+            When `True`, appends `mean`, `std`, and `rsd` rows.
 
     Returns:
         Absolute path to the generated CSV file.
@@ -530,12 +532,33 @@ def write(journal: Journal, *deltas: float) -> Path:
         header: list[str] = ["delta", *[str(int(year)) for year in years]]
         writer.writerow(header)
 
+        matrix_values: list[list[float]] = []
         for delta in deltas:
             if_values: IFResult = journal.ifCalc(delta)
             row: list[str] = [str(delta)]
+            row_values: list[float] = []
             for year in years:
-                row.append(str(float(if_values[year])))
+                value: float = float(if_values[year])
+                row_values.append(value)
+                row.append(str(value))
+            matrix_values.append(row_values)
             writer.writerow(row)
+
+        if analyse:
+            value_array: npt.NDArray[np.float64] = np.array(matrix_values, dtype=np.float64)
+            year_means: npt.NDArray[np.float64] = np.mean(value_array, axis=0)
+            year_stds: npt.NDArray[np.float64] = np.std(value_array, axis=0)
+
+            year_rsds: list[float] = []
+            for mean_value, std_value in zip(year_means, year_stds, strict=True):
+                if mean_value == 0.0:
+                    year_rsds.append(0.0)
+                else:
+                    year_rsds.append(float(std_value / mean_value))
+
+            writer.writerow(["mean", *[str(float(value)) for value in year_means]])
+            writer.writerow(["std", *[str(float(value)) for value in year_stds]])
+            writer.writerow(["rsd", *[str(value) for value in year_rsds]])
 
     return file_path.resolve()
 
