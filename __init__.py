@@ -13,9 +13,17 @@ Optional plotting API (lazy import):
 from typing import Any
 from pathlib import Path
 
-from .calculator import Journal, import_journal, read, transpose, write
+from .calculator import Journal, analyse, import_journal, read, transpose, write
 
-__all__: list[str] = ["Journal", "read", "import_journal", "write", "transpose", "plot_from_csv"]
+__all__: list[str] = [
+    "Journal",
+    "read",
+    "import_journal",
+    "write",
+    "analyse",
+    "transpose",
+    "plot_from_csv",
+]
 
 
 def plot_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -> Path:
