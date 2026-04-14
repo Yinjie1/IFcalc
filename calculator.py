@@ -123,7 +123,7 @@ def _parse_csv_rows(lines: list[str], header_index: int) -> tuple[list[str], lis
     """
 
     csv_text: str = "\n".join(lines[header_index:])
-    reader: csv.reader[str] = csv.reader(csv_text.splitlines())
+    reader = csv.reader(csv_text.splitlines())
     all_rows: list[list[str]] = list(reader)
     if not all_rows:
         raise ValueError("No CSV rows found after header.")
@@ -530,7 +530,7 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     file_path: Path = Path(f"{journal.name}.csv")
 
     with file_path.open("w", encoding="utf-8", newline="") as fp:
-        writer: csv.writer = csv.writer(fp)
+        writer = csv.writer(fp)
         header: list[str] = ["delta", *[str(int(year)) for year in years]]
         writer.writerow(header)
 
@@ -556,7 +556,7 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     if analyse:
         analysis_path: Path = file_path.with_name(f"{file_path.stem}_analysis.csv")
         with analysis_path.open("w", encoding="utf-8", newline="") as fp:
-            writer: csv.writer = csv.writer(fp)
+            writer = csv.writer(fp)
             writer.writerow(["delta", "mean", "std", "rsd"])
             writer.writerows(analysis_rows)
 
@@ -595,7 +595,7 @@ def analyse(file_path: str | Path) -> Path:
         raise FileNotFoundError(f"CSV file not found: {path}")
 
     with path.open("r", encoding="utf-8", newline="") as fp:
-        reader: csv.reader = csv.reader(fp)
+        reader = csv.reader(fp)
         rows: list[list[str]] = list(reader)
 
     if len(rows) < 2:
@@ -656,7 +656,7 @@ def analyse(file_path: str | Path) -> Path:
 
     output_path: Path = path.with_name(f"{path.stem}_decrease.csv")
     with output_path.open("w", encoding="utf-8", newline="") as fp:
-        writer: csv.writer = csv.writer(fp)
+        writer = csv.writer(fp)
         writer.writerows(output_rows)
 
     return output_path.resolve()
@@ -689,7 +689,7 @@ def transpose(file_path: str | Path) -> Path:
         raise FileNotFoundError(f"CSV file not found: {path}")
 
     with path.open("r", encoding="utf-8", newline="") as fp:
-        reader: csv.reader = csv.reader(fp)
+        reader = csv.reader(fp)
         rows: list[list[str]] = list(reader)
 
     if len(rows) == 0:
@@ -710,7 +710,7 @@ def transpose(file_path: str | Path) -> Path:
     output_path: Path = path.with_name(f"{path.stem}-t.csv")
 
     with output_path.open("w", encoding="utf-8", newline="") as fp:
-        writer: csv.writer = csv.writer(fp)
+        writer = csv.writer(fp)
         writer.writerows(transposed_rows)
 
     return output_path.resolve()

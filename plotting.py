@@ -40,7 +40,7 @@ def _load_if_csv(csv_path: Path) -> tuple[list[int], list[tuple[str, list[float]
     """
 
     with csv_path.open("r", encoding="utf-8", newline="") as fp:
-        reader: csv.reader = csv.reader(fp)
+        reader = csv.reader(fp)
         rows: list[list[str]] = list(reader)
 
     if len(rows) < 2:
@@ -177,7 +177,7 @@ def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None 
         ) from exc
 
     with path.open("r", encoding="utf-8", newline="") as fp:
-        reader: csv.reader = csv.reader(fp)
+        reader = csv.reader(fp)
         rows: list[list[str]] = list(reader)
 
     if len(rows) < 2:
