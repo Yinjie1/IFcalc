@@ -504,9 +504,10 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     Args:
         journal: Journal object to calculate IF from.
         *deltas: Arbitrary number of trim parameters.
-        analyse: Whether to append row-wise summary columns.
-            When `True`, appends `mean`, `std`, and `rsd` columns for each
-            delta row, calculated across year values in that row.
+        analyse: Whether to write per-delta analysis into a separate file.
+            When `True`, writes `<name>_analysis.csv` with
+            `delta,mean,std,rsd` rows, calculated across year values in each
+            delta row, where `rsd = std/mean`.
 
     Returns:
         Absolute path to the generated CSV file.
@@ -531,10 +532,9 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
     with file_path.open("w", encoding="utf-8", newline="") as fp:
         writer: csv.writer = csv.writer(fp)
         header: list[str] = ["delta", *[str(int(year)) for year in years]]
-        if analyse:
-            header.extend(["mean", "std", "rsd"])
         writer.writerow(header)
 
+        analysis_rows: list[list[str]] = []
         for delta in deltas:
             if_values: IFResult = journal.ifCalc(delta)
             row: list[str] = [str(delta)]
@@ -544,14 +544,21 @@ def write(journal: Journal, *deltas: float, analyse: bool = False) -> Path:
                 row_values.append(value)
                 row.append(str(value))
 
+            writer.writerow(row)
+
             if analyse:
                 value_array: npt.NDArray[np.float64] = np.array(row_values, dtype=np.float64)
                 row_mean: float = float(np.mean(value_array))
                 row_std: float = float(np.std(value_array))
                 row_rsd: float = 0.0 if row_mean == 0.0 else float(row_std / row_mean)
-                row.extend([str(row_mean), str(row_std), str(row_rsd)])
+                analysis_rows.append([str(delta), str(row_mean), str(row_std), str(row_rsd)])
 
-            writer.writerow(row)
+    if analyse:
+        analysis_path: Path = file_path.with_name(f"{file_path.stem}_analysis.csv")
+        with analysis_path.open("w", encoding="utf-8", newline="") as fp:
+            writer: csv.writer = csv.writer(fp)
+            writer.writerow(["delta", "mean", "std", "rsd"])
+            writer.writerows(analysis_rows)
 
     return file_path.resolve()
 
