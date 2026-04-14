@@ -23,6 +23,7 @@ __all__: list[str] = [
     "analyse",
     "transpose",
     "plot_from_csv",
+    "plot_analysis_from_csv",
 ]
 
 
@@ -36,3 +37,11 @@ def plot_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -
     from .plotting import plot_from_csv as _plot_from_csv
 
     return _plot_from_csv(csv_path, output_path)
+
+
+def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Lazily draw mean/std analysis plot from analysis CSV."""
+
+    from .plotting import plot_analysis_from_csv as _plot_analysis_from_csv
+
+    return _plot_analysis_from_csv(csv_path, output_path)

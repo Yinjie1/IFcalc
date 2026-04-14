@@ -137,3 +137,90 @@ def plot_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -
     plt.close(figure)
 
     return target_path.resolve()
+
+
+def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Draw mean/std relationship against delta from analysis CSV.
+
+    Expected CSV format (from `write(..., analyse=True)`):
+    - columns: `delta,mean,std[,rsd]`
+
+    Plot contents:
+    - solid line: `mean` vs `delta`
+    - dashed lines: `mean + std` and `mean - std`
+    - shaded area: between upper/lower dashed lines in semi-transparent red
+
+    Args:
+        csv_path: Source analysis CSV path.
+        output_path: Optional output image path.
+            If omitted, output will be `<csv_stem>.png` in the same directory.
+
+    Returns:
+        Absolute path to the saved figure image.
+
+    Raises:
+        FileNotFoundError: If input CSV does not exist.
+        ImportError: If matplotlib is unavailable in current environment.
+        ValueError: If CSV format is invalid.
+    """
+
+    path: Path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV file not found: {path}")
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise ImportError(
+            "matplotlib is required for plotting. "
+            "Install it in your current environment first."
+        ) from exc
+
+    with path.open("r", encoding="utf-8", newline="") as fp:
+        reader: csv.reader = csv.reader(fp)
+        rows: list[list[str]] = list(reader)
+
+    if len(rows) < 2:
+        raise ValueError("Analysis CSV must contain header and at least one data row.")
+
+    header: list[str] = rows[0]
+    if len(header) < 3 or header[0] != "delta" or header[1] != "mean" or header[2] != "std":
+        raise ValueError("Analysis CSV header must start with: delta,mean,std")
+
+    deltas: list[float] = []
+    means: list[float] = []
+    stds: list[float] = []
+    for row in rows[1:]:
+        if len(row) < 3:
+            raise ValueError("Analysis CSV row must contain at least 3 columns.")
+        try:
+            deltas.append(float(row[0]))
+            means.append(float(row[1]))
+            stds.append(float(row[2]))
+        except ValueError as exc:
+            raise ValueError(f"Invalid numeric value in analysis CSV row: {row!r}") from exc
+
+    upper: list[float] = [mean + std for mean, std in zip(means, stds, strict=True)]
+    lower: list[float] = [mean - std for mean, std in zip(means, stds, strict=True)]
+
+    title_text: str = _to_display_title(path.stem)
+
+    figure = plt.figure(figsize=(8, 5), dpi=120)
+    plt.plot(deltas, means, color="tab:blue", linewidth=1.8, label="mean")
+    plt.plot(deltas, upper, color="tab:red", linestyle="--", linewidth=1.3, label="mean + std")
+    plt.plot(deltas, lower, color="tab:red", linestyle="--", linewidth=1.3, label="mean - std")
+    plt.fill_between(deltas, lower, upper, color="red", alpha=0.2)
+
+    plt.xlabel("Delta")
+    plt.ylabel("IF")
+    plt.title(title_text)
+    plt.xticks(deltas)
+    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+    target_path: Path = Path(output_path) if output_path is not None else path.with_suffix(".png")
+    figure.savefig(target_path)
+    plt.close(figure)
+
+    return target_path.resolve()
