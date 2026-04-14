@@ -117,7 +117,7 @@ IFcalc.plot_analysis_from_csv(f"{csv_path.stem}_analysis.csv")
 
 ```python
 decrease_path = IFcalc.analyse("chinese physics c.csv")
-IFcalc.plot_from_csv(decrease_path)
+IFcalc.plot_decrease_from_csv(decrease_path)
 ```
 
 ## 完整工作流示例
@@ -205,7 +205,9 @@ def main() -> None:
         output_lines.append(f"Plot output: {image_path.resolve()}")
         if ANALYSE:
             analysed_image_path = IFcalc.plot_analysis_from_csv(analysis_csv_path)
+            decrease_image_path = IFcalc.plot_decrease_from_csv(decrease_csv_path)
             output_lines.append(f"Analysis plot output: {analysed_image_path.resolve()}")
+            output_lines.append(f"Decrease plot output: {decrease_image_path.resolve()}")
 
     print("\n".join(output_lines))
 

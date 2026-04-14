@@ -223,3 +223,106 @@ def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None 
     plt.close(figure)
 
     return target_path.resolve()
+
+
+def plot_decrease_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Draw decrease-percentage curves from `analyse(...)` output CSV.
+
+    Expected CSV format:
+    - header: `year,<delta1>,<delta2>,...`
+    - rows: `<year>,<decrease_for_delta1>,<decrease_for_delta2>,...`
+
+    Plot settings:
+    - x-axis: year
+    - y-axis: decrease percentage
+    - one curve per delta column
+    - legend labels are formatted as percentages, such as `10%`
+    - title is based on journal name parsed from file stem
+
+    Args:
+        csv_path: Source decrease CSV path.
+        output_path: Optional output image path.
+            If omitted, output will be `<csv_stem>.png` in the same directory.
+
+    Returns:
+        Absolute path to the saved figure image.
+
+    Raises:
+        FileNotFoundError: If input CSV does not exist.
+        ImportError: If matplotlib is unavailable in current environment.
+        ValueError: If CSV format is invalid.
+    """
+
+    path: Path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV file not found: {path}")
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise ImportError(
+            "matplotlib is required for plotting. "
+            "Install it in your current environment first."
+        ) from exc
+
+    with path.open("r", encoding="utf-8", newline="") as fp:
+        reader = csv.reader(fp)
+        rows: list[list[str]] = list(reader)
+
+    if len(rows) < 2:
+        raise ValueError("Decrease CSV must contain header and at least one data row.")
+
+    header: list[str] = rows[0]
+    if len(header) < 2 or header[0] != "year":
+        raise ValueError("Decrease CSV header must be: year,<delta1>,<delta2>,...")
+
+    delta_labels: list[str] = header[1:]
+    years: list[int] = []
+    value_matrix: list[list[float]] = []
+    for row in rows[1:]:
+        if len(row) < len(delta_labels) + 1:
+            raise ValueError("Decrease CSV row column count does not match header.")
+        try:
+            years.append(int(row[0]))
+        except ValueError as exc:
+            raise ValueError(f"Invalid year value: {row[0]!r}") from exc
+
+        values: list[float] = []
+        for raw_value in row[1 : len(delta_labels) + 1]:
+            try:
+                values.append(float(raw_value))
+            except ValueError as exc:
+                raise ValueError(f"Invalid decrease value: {raw_value!r}") from exc
+        value_matrix.append(values)
+
+    # value_matrix shape: [year_index][delta_index] -> plot by delta
+    title_stem: str = path.stem
+    if title_stem.endswith("_decrease"):
+        title_stem = title_stem[: -len("_decrease")]
+    title_text: str = _to_display_title(title_stem)
+
+    figure = plt.figure(figsize=(8, 5), dpi=120)
+    for delta_index, delta_label in enumerate(delta_labels):
+        try:
+            if float(delta_label) == 0.0:
+                continue
+        except ValueError:
+            pass
+
+        series_values: list[float] = [row[delta_index] for row in value_matrix]
+        legend_label: str = delta_label if delta_label.endswith("%") else f"{delta_label}%"
+        plt.plot(years, series_values, marker="o", linewidth=1.4, label=legend_label)
+
+    plt.xlabel("Year")
+    plt.ylabel("Decrease (%)")
+    plt.title(title_text)
+    plt.xticks(years)
+    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+    target_path: Path = Path(output_path) if output_path is not None else path.with_suffix(".png")
+    figure.savefig(target_path)
+    plt.close(figure)
+
+    return target_path.resolve()

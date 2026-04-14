@@ -24,6 +24,7 @@ __all__: list[str] = [
     "transpose",
     "plot_from_csv",
     "plot_analysis_from_csv",
+    "plot_decrease_from_csv",
 ]
 
 
@@ -45,3 +46,11 @@ def plot_analysis_from_csv(csv_path: str | Path, output_path: str | Path | None 
     from .plotting import plot_analysis_from_csv as _plot_analysis_from_csv
 
     return _plot_analysis_from_csv(csv_path, output_path)
+
+
+def plot_decrease_from_csv(csv_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Lazily draw decrease curves from decrease CSV."""
+
+    from .plotting import plot_decrease_from_csv as _plot_decrease_from_csv
+
+    return _plot_decrease_from_csv(csv_path, output_path)
