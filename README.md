@@ -133,6 +133,8 @@ Timespan: 1980-2026.
 将该脚本和仓库文件(整个 IFcalc 文件夹)复制到工作目录:
 
 ```python
+from __future__ import annotations
+
 from pathlib import Path
 import shutil
 
@@ -141,14 +143,18 @@ import IFcalc
 INPUT_DIR: Path = Path("./raw/SCIENCE") # WoS 导出的 txt 文件存放目录
 OUTPUT_DIR: Path = Path("./OUT") # 处理后的数据输出目录
 INPUT_PATTERN: str = "*.txt" # 一般不用改
-# 首尾裁减的比例
-DELTAS: tuple[int, ...] = (0, 1, 3, 5, 7, 10, 12, 15, 18, 20, 25)
+DELTAS: tuple[int, ...] = tuple(range(0,26,2)) # 首尾裁减的比例
+ANALYSE: bool = True # 计算每次裁剪相较上次裁减IF降低的百分比
+PLOT: bool = True # 自动绘图
+TRANSPOSE: bool = False # 行列转置
 
 
 def main() -> None:
+    """Run end-to-end IF calculation example for CPC files."""
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    input_files = sorted(INPUT_DIR.glob(INPUT_PATTERN))
+    input_files: list[Path] = sorted(INPUT_DIR.glob(INPUT_PATTERN))
     if len(input_files) == 0:
         raise FileNotFoundError(f"No txt files found in: {INPUT_DIR.resolve()}")
 
@@ -159,18 +165,38 @@ def main() -> None:
     if journal is None:
         raise ValueError("Journal initialization failed.")
 
-    csv_path = IFcalc.write(journal, *DELTAS)
-    target_csv_path = OUTPUT_DIR / csv_path.name
+    csv_path: Path = IFcalc.write(journal, *DELTAS, analyse=ANALYSE)
+    target_csv_path: Path = OUTPUT_DIR / csv_path.name
     shutil.move(str(csv_path), str(target_csv_path))
 
-    transposed_csv_path = IFcalc.transpose(target_csv_path)
-    image_path = IFcalc.plot_from_csv(target_csv_path)
+    output_lines: list[str] = [
+        f"Loaded files: {len(input_files)}",
+        f"Journal identifier: {journal.identifier}",
+        f"Journal name: {journal.name}",
+        f"CSV output: {target_csv_path.resolve()}",
+    ]
 
-    print(f"Journal identifier: {journal.identifier}")
-    print(f"Journal name: {journal.name}")
-    print(f"CSV output: {target_csv_path.resolve()}")
-    print(f"Transposed CSV output: {transposed_csv_path.resolve()}")
-    print(f"Plot output: {image_path.resolve()}")
+    if ANALYSE:
+        source_analysis_path: Path = csv_path.with_name(f"{csv_path.stem}_analysis.csv")
+        analysis_csv_path: Path = OUTPUT_DIR / source_analysis_path.name
+        if source_analysis_path.exists():
+            shutil.move(str(source_analysis_path), str(analysis_csv_path))
+        decrease_csv_path = IFcalc.analyse(target_csv_path)
+        output_lines.append(f"Analysis CSV output: {analysis_csv_path.resolve()}")
+        output_lines.append(f"Decrease CSV output: {decrease_csv_path.resolve()}")
+
+    if TRANSPOSE:
+        transposed_csv_path = IFcalc.transpose(target_csv_path)
+        output_lines.append(f"Transposed CSV output: {transposed_csv_path.resolve()}")
+
+    if PLOT:
+        image_path = IFcalc.plot_from_csv(target_csv_path)
+        output_lines.append(f"Plot output: {image_path.resolve()}")
+        if ANALYSE:
+            analysed_image_path = IFcalc.plot_analysis_from_csv(analysis_csv_path)
+            output_lines.append(f"Analysis plot output: {analysed_image_path.resolve()}")
+
+    print("\n".join(output_lines))
 
 
 if __name__ == "__main__":
