@@ -658,7 +658,7 @@ def analyse(file_path: str | Path, relative_to_initial: bool = True) -> Path:
                 if initial_value == 0.0:
                     decrease_pct = 0.0
                 else:
-                    decrease_pct = float(((current_value - previous_value) / initial_value) * 100.0)
+                    decrease_pct = float(-((current_value - previous_value) / initial_value) * 100.0)
             else:
                 if previous_value == 0.0:
                     decrease_pct = 0.0
